@@ -2,7 +2,7 @@
 % (currently only processes visible images)
 
 % Sandra Winters <sandra.winters@colorado.edu
-% updated Jan 30 2026
+% updated Feb 6 2026
 
 %% setup
 % set your current directory (function cd) to folder of code
@@ -12,14 +12,12 @@
     % whatever that folder is called on your computer)
 
 % setup for default users; otherwise popup asks for locations
-if ismember(getenv('USERNAME'),{'wintsand','Localadmin_wintsand','sandra'}) %SW computer
+if ismember(getenv('USERNAME'),{'sandra','swint'}) %SW computer
     if isunix %linux desktop
         cd ~/Dropbox/Color_scripts 
-        % d = '/home/wintsand/Dropbox/wtm_images/testing';
         d = '/mnt/Elements/wtm_images/';
     else %PC laptop
-        cd C:\Users\wintsand\Dropbox\Color_scripts
-        % d = 'C:\Users\wintsand\Dropbox\wtm_images\testing';
+        cd C:\Users\swint\Dropbox\Color_scripts
         d = 'D:\wtm_images\';
     end
 % YOU CAN ADD YOUR OWN DEFAULT BY UPDATING THE CODE BELOW 
@@ -31,10 +29,10 @@ else %unknown computer -- get user to select relevant directories
     d = uigetdir(cd,'Select folder of images (should contain "original_images" and other folders)');
 end
 
-% set vars - MAKE SURE ALL OF THE VARIABLES BELOW ARE CORRECT FOR YOUR IMAGE LAYOUT & MATERIALS! 
+% set vars - !!! MAKE SURE ALL OF THE VARIABLES BELOW ARE CORRECT FOR YOUR IMAGE LAYOUT & MATERIALS !!! 
 standard = 'AvianTech'; %type of color standard (see MatchStandardFun.m for more options, e.g. 'Jolyon' for DIY two-patch standards)
 realScaleLength = 50; %real length of the scale bar (e.g. in mm)
-wingNames = {'left_hindwing','left_forewing','right_forewing','right_hindwing'}; %wing names, order: clockwise from top left of image
+wingNames = {'left_hindwing','left_forewing','right_forewing','right_hindwing'}; %wing names, order: clockwise from top left of image (will rename extracted wing images based on whatever is here)
 wingSepMethod = 'crosshair'; %method for marking wings 
     %'crosshair': crop to wing region then separate using a click in the center (best when wings can be cleanly separated by a cross)
     %'rectangles': mark each wing using a separate rectangle (best when wings cannot be cleanly sparated)
@@ -50,8 +48,8 @@ imExt = '.tiff'; %image file extension
 % images and data are linked using filenames, so NO CHANGING! (don't
 % process images until filnames are finalized!!!)
 %
-% commented out sections below may be useful! remove comments from code as 
-% needed. 
+% commented out sections below may be useful! remove/add comments from/to
+% code as needed.
 
 %% Extract images to process
 % CopyEveryXImages(fullfile(d,'raw_images'), ... %folder of raw images 
@@ -62,7 +60,7 @@ imExt = '.tiff'; %image file extension
 
 % Copies every X image from a folder, useful when using the slider uv-vis
 % camera with exposure bracketing. ALWAYS CHECK EXPOSURES TO MAKE SURE
-% YOU'RE EXTRACTING THE RIGHT IMAGES. 
+% YOU'RE EXTRACTING THE RIGHT IMAGES! 
 
 %% Rename as necessary
 % Rename images here if you want to (e.g., based on ID in image -- easiest
@@ -186,8 +184,7 @@ SAMImages(fullfile(d,'wings_scaled_vis_sqrt'), ... %folder of images to segment
           fullfile(d,'wing_masks'), ... %folder to save wing masks
           1, ... %resize parameter (make this smaller to save processing time)
           [8 8]) %pointGridSize (see doc imsegsam)
-% Note: requires the "Image Processing Toolbox Model for Segment Anything
-% Model" add-on
+% Note: requires the "Image Processing Toolbox Model for Segment Anything Model" add-on
 
 MaskImages(fullfile(d,'wings_scaled_vis_sqrt'), ... %folder of images to mask
            fullfile(d,'wing_masks'), ... %folder of wing masks
@@ -241,11 +238,20 @@ MaskImages(fullfile(d,'wings_scaled_vis_sqrt'), ... %folder of images to mask
 WtmClusterMelanin(fullfile(d,'wings_scaled_vis_sqrt'), ... %image directory
                   fullfile(d,'wing_masks'), ... %wing mask directory
                   fullfile(d,'melanin_masks'), ... %melanized mask directory
-                  fullfile(d,'non-melanin_masks'), ... %non-melanized mask directory
+                  fullfile(d,'nonmelanin_masks'), ... %non-melanized mask directory
                   fullfile(d,'wings_recolored'), ... %recolored image directory
                   fullfile(d,'wings_overlayed'), ... %overlayed image directory
                   2, ... %k
                   1) %erode radius
+
+%% Measure color & size of wing regions
+MeasureROIColors(fullfile(d,'wings_scaled_vis_sqrt'), ... %folder of images
+                 fullfile(d,'melanin_masks'), ... %folder of melanin masks
+                 fullfile(d,'melanin_data')) %folder to save melanized region data
+
+MeasureROIColors(fullfile(d,'wings_scaled_vis_sqrt'), ... %folder of images
+                 fullfile(d,'nonmelanin_masks'), ... %folder of non-melanin masks
+                 fullfile(d,'nonmelanin_data')) %folder to save non-melanized region data
 
 %% Generate comparison images for each wing
 CreateImageComparisons({fullfile(d,'wings_scaled_vis_sqrt'), ... %folders to combine >>>
@@ -275,23 +281,49 @@ CreateImageComparisons({fullfile(d,'wings_scaled_vis_sqrt'), ... %folders to com
 
 %% extract size data
 %add wing size
-data = CalcMaskSize(fullfile(d,'wing_masks'),fullfile(d,'wing_mask_data'));
-data.Properties.VariableNames{end} = 'wing_px';
+data = CalcMaskSize(fullfile(d,'wing_masks'),fullfile(d,'wing_mask_data')); %calculates the size of each mask in the folder & compiles
+data.Properties.VariableNames{end} = 'wing_nPx'; %adds wing to column name
+data.filename = strrep(data.filename,'_maskData',''); %cleans up filenames
 
-%add melanized size
-data = join(data,CalcMaskSize(fullfile(d,'melanin_masks'),fullfile(d,'melanin_mask_data')));
-data.Properties.VariableNames{end} = 'melanized_px';
+%add data for melanized & non-melanized regions 
+dataFolders = {'melanin_data','nonmelanin_data'}; %folders to extract data from
+for f = 1:length(dataFolders)
+    %extract data
+    tmp = CompileFilesStruct(fullfile(d,dataFolders{f}),'roiData',{'medianRGB','nPx'}); %compiles requested data from relevant folder
 
-%add nonmelanized size
-data = join(data,CalcMaskSize(fullfile(d,'non-melanin_masks'),fullfile(d,'non-melanin_mask_data')));
-data.Properties.VariableNames{end} = 'nonmelanized_px';
+    %format & combine
+    type = strrep(dataFolders{f},'n_data','zed_'); %creates 'melanized' or 'nonmelanized'
+    tmp = splitvars(tmp,'medianRGB','NewVariableNames',strcat(type,{'R','G','B'})); %separates medianRGB matrix into R G B columns
+        %note: median color probably best here because it would be less
+        %impacted by extreme values, but could also extract 'meanRGB'
+        %and/or 'stdRGB' (standard deviation of RGB)
+    tmp.Properties.VariableNames{end} = strcat(type,tmp.Properties.VariableNames{end}); %adds type to R G B column names
+    tmp.filename = strrep(data.filename,'_roiData',''); %cleans up filename for joining
 
-%calc prop melanized
-data.prop_melanized = data.melanized_px ./ (data.melanized_px + data.nonmelanized_px);
+    data = join(data,tmp); %combine into single file
+end
 
-%clean up filename
-data.filename = strrep(data.filename,'_maskData','');
+clear tmp type %clean up
+
+%calculate proportion melanized
+data.prop_melanized = data.melanized_nPx ./ (data.melanized_nPx + data.nonmelanized_nPx);
+%Note: melanized_nPx + nonmelanized_nPx < wing_nPx because the wing ROI was
+%eroded when clustering colors (the edge pixels were excluded)
 
 %save data file (saved to current directory)
 writetable(data,fullfile(d,'data.csv'))
+    % data.csv contains the following info (in columns): 
+        % filename: image filename
+        % wing_nPx: number of pixels in the wing (size of wing area; can calculate actual size based on ppmm variable)
+        % melanized_R: red color measurement from the melanized region of wing (in camera RGB color space; probably want to convert to a standard measure e.g. visual model or CIELAB)
+        % melanized_G: green color measurement from the melanized region of wing (in camera RGB color space; probably want to convert to a standard measure e.g. visual model or CIELAB)
+        % melanized_B: blue color measurement from the melanized region of wing (in camera RGB color space; probably want to convert to a standard measure e.g. visual model or CIELAB)
+        % melanized_nPx: number of pixels in the melanizeed region of the wing (can calculate actual size based on ppmm variable)
+        % nonmelanized_R: red color measurement from the non-melanized region of wing (in camera RGB color space; probably want to convert to a standard measure e.g. visual model or CIELAB)
+        % nonmelanized_G: green color measurement from the non-melanized region of wing (in camera RGB color space; probably want to convert to a standard measure e.g. visual model or CIELAB)
+        % nonmelanized_B: blue color measurement from the non-melanized region of wing (in camera RGB color space; probably want to convert to a standard measure e.g. visual model or CIELAB)
+        % nonmelanized_nPx: number of pixels in the non-melanizeed region of the wing (can calculate actual size based on ppmm variable)
+        % prop_melanized: proportion of the wing that is melanized;
+        % calculated as melanized_nPx / (melanized_nPx + nonmelanized_nPx) (see note above)
+
 
